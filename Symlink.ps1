@@ -6,8 +6,8 @@ param (
 # Define paths and strategy name
 $strategyName = Split-Path -Path (Get-Location) -Leaf
 $BaseSourcePath = "C:\Projects\MetaTraderComponants"
-$Mt4InstallPath = "C:\AfterPrimeMt4"
-$Mt5InstallPath = "C:\AfterPrimeMt5"
+$Mt4InstallPath = "C:\Projects\OLD\Mt4 20241003\2 AP2\Signal\Instance1"
+$Mt5InstallPath = ""
 $MapSourcePath = Join-Path $BaseSourcePath $strategyName
 
 # Component types to map
