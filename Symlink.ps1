@@ -1,77 +1,89 @@
-# Get the current folder name as the strategy name
-$strategyName = Split-Path -Path (Get-Location) -Leaf
-$gitRepoPath = "C:\Projects\$strategyName"  # Path to cloned GitHub repository
-$mt4InstallPath = "C:\Projects\MT4"  # Path to MT4 installation
-$mt5InstallPath = "C:\Projects\MT5"  # Path to MT5 installation (adjust if different)
-
-# Merge mt4\include and mt5\include into common folder
-$commonPath = Join-Path $gitRepoPath "common"
-$mt4IncludePath = Join-Path $gitRepoPath "mt4\include"
-$mt5IncludePath = Join-Path $gitRepoPath "mt5\include"
-
-# Copy mt4\include contents to common
-if (Test-Path $mt4IncludePath) {
-    Copy-Item -Path "$mt4IncludePath\*" -Destination $commonPath -Recurse -Force
-    Write-Host "Copied mt4\include contents to common"
-}
-
-# Copy mt5\include contents to common
-if (Test-Path $mt5IncludePath) {
-    Copy-Item -Path "$mt5IncludePath\*" -Destination $commonPath -Recurse -Force
-    Write-Host "Copied mt5\include contents to common"
-}
-
-# Define mappings: source (Git repo) to target (MT4/MT5 installation)
-$mappings = @(
-    # Common folder mappings (shared by MQL4 and MQL5)
-    @{
-        Source = $commonPath
-        TargetMQL4 = Join-Path $mt4InstallPath "MQL4\Include\$strategyName"
-        TargetMQL5 = Join-Path $mt5InstallPath "MQL5\Include\$strategyName"
-    },
-    # MT4 Indicators
-    @{
-        Source = Join-Path $gitRepoPath "mt4\Indicators"
-        TargetMQL4 = Join-Path $mt4InstallPath "MQL4\Indicators\$strategyName"
-    },
-    # MT5 Indicators
-    @{
-        Source = Join-Path $gitRepoPath "mt5\Indicators"
-        TargetMQL5 = Join-Path $mt5InstallPath "MQL5\Indicators\$strategyName"
-    }
+param (
+    [ValidateSet("Create", "Remove")]
+    [string]$Action = "Create"
 )
 
-# Function to create junction point
-function Create-Junction {
-    param (
-        [string]$Source,
-        [string]$Target
-    )
-    if (-not (Test-Path $Source)) {
-        Write-Warning "Source path $Source does not exist. Skipping."
-        return
-    }
-    if (Test-Path $Target) {
-        Write-Warning "Target path $Target already exists. Skipping."
-        return
-    }
-    # Ensure parent directory exists
-    $parent = Split-Path -Path $Target -Parent
-    if (-not (Test-Path $parent)) {
-        New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    }
-    New-Item -ItemType Junction -Path $Target -Target $Source -Force
-    Write-Host "Created junction: $Target -> $Source"
-}
+# Define paths and strategy name
+$strategyName = Split-Path -Path (Get-Location) -Leaf
+$BaseSourcePath = "C:\Projects\MetaTraderComponants"
+$Mt4InstallPath = "C:\AfterPrimeMt4"
+$Mt5InstallPath = "C:\AfterPrimeMt5"
+$MapSourcePath = Join-Path $BaseSourcePath $strategyName
 
-# Process each mapping
-foreach ($mapping in $mappings) {
-    if ($mapping.TargetMQL4) {
-        Create-Junction -Source $mapping.Source -Target $mapping.TargetMQL4
-    }
-    if ($mapping.TargetMQL5) {
-        Create-Junction -Source $mapping.Source -Target $mapping.TargetMQL5
-    }
-}
+# Component types to map
+$components = @("Indicators", "Experts", "Files", "Images", "Libraries", "Logs", "Presets", "Projects", "Scripts", "SharedProjects")
 
-Write-Host "Setup complete. Verify junctions and test MT4/MT5 functionality."
+# Check platform availability
+$mt4Available = Test-Path $Mt4InstallPath
+$mt5Available = Test-Path $Mt5InstallPath
+if (-not $mt4Available -and -not $mt5Available) { Write-Error "No valid platform paths. Exiting."; exit 1 }
+
+if ($Action -eq "Create") {
+    # Copy common files to Include folders
+    $commonPath = Join-Path $MapSourcePath "common"
+    if (Test-Path $commonPath) {
+        if ($mt4Available) {
+            $mt4IncludeDest = Join-Path $Mt4InstallPath "MQL4\Include\$strategyName"
+            New-Item -ItemType Directory -Path $mt4IncludeDest -Force | Out-Null
+            Copy-Item -Path "$commonPath\*" -Destination $mt4IncludeDest -Recurse -Force
+            Write-Host "Copied common files to $mt4IncludeDest"
+        }
+        if ($mt5Available) {
+            $mt5IncludeDest = Join-Path $Mt5InstallPath "MQL5\Include\$strategyName"
+            New-Item -ItemType Directory -Path $mt5IncludeDest -Force | Out-Null
+            Copy-Item -Path "$commonPath\*" -Destination $mt5IncludeDest -Recurse -Force
+            Write-Host "Copied common files to $mt5IncludeDest"
+        }
+    } else {
+        Write-Warning "Common path $commonPath not found. Skipping include files."
+    }
+
+    # Create junctions for MT4 components
+    $mt4SourcePath = Join-Path $MapSourcePath "mt4"
+    if ($mt4Available -and (Test-Path $mt4SourcePath)) {
+        foreach ($comp in $components) {
+            $sourceFolder = Join-Path $mt4SourcePath $comp
+            if (Test-Path $sourceFolder) {
+                $targetFolder = Join-Path $Mt4InstallPath "MQL4\$comp\$strategyName"
+                if (Test-Path $targetFolder) { Remove-Item $targetFolder -Force -Recurse }
+                New-Item -ItemType Junction -Path $targetFolder -Target $sourceFolder -Force | Out-Null
+                Write-Host "Created junction: $targetFolder -> $sourceFolder"
+            }
+        }
+    }
+
+    # Create junctions for MT5 components
+    $mt5SourcePath = Join-Path $MapSourcePath "mt5"
+    if ($mt5Available -and (Test-Path $mt5SourcePath)) {
+        foreach ($comp in $components) {
+            $sourceFolder = Join-Path $mt5SourcePath $comp
+            if (Test-Path $sourceFolder) {
+                $targetFolder = Join-Path $Mt5InstallPath "MQL5\$comp\$strategyName"
+                if (Test-Path $targetFolder) { Remove-Item $targetFolder -Force -Recurse }
+                New-Item -ItemType Junction -Path $targetFolder -Target $sourceFolder -Force | Out-Null
+                Write-Host "Created junction: $targetFolder -> $sourceFolder"
+            }
+        }
+    }
+
+    Write-Host "Setup complete."
+} else {
+    # Remove include folders and junctions
+    if ($mt4Available) {
+        $mt4IncludeDest = Join-Path $Mt4InstallPath "MQL4\Include\$strategyName"
+        if (Test-Path $mt4IncludeDest) { Remove-Item $mt4IncludeDest -Force -Recurse; Write-Host "Removed $mt4IncludeDest" }
+        foreach ($comp in $components) {
+            $targetFolder = Join-Path $Mt4InstallPath "MQL4\$comp\$strategyName"
+            if (Test-Path $targetFolder) { Remove-Item $targetFolder -Force -Recurse; Write-Host "Removed $targetFolder" }
+        }
+    }
+    if ($mt5Available) {
+        $mt5IncludeDest = Join-Path $Mt5InstallPath "MQL5\Include\$strategyName"
+        if (Test-Path $mt5IncludeDest) { Remove-Item $mt5IncludeDest -Force -Recurse; Write-Host "Removed $mt5IncludeDest" }
+        foreach ($comp in $components) {
+            $targetFolder = Join-Path $Mt5InstallPath "MQL5\$comp\$strategyName"
+            if (Test-Path $targetFolder) { Remove-Item $targetFolder -Force -Recurse; Write-Host "Removed $targetFolder" }
+        }
+    }
+    Write-Host "Cleanup complete."
+}
