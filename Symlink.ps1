@@ -1,3 +1,9 @@
+<#
+Temprary session bypass
+
+powershell -ExecutionPolicy Bypass
+#>
+
 param (
     [ValidateSet("Create", "Remove")]
     [string]$Action = "Create"
